@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: rest-server
-        image: rest-server:latest
+        image: us-central1-docker.pkg.dev/lab7-477021/lab7/rest-server:v1
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 5000
