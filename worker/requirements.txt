@@ -1,0 +1,9 @@
+redis==5.0.7
+minio==7.2.7
+jsonpickle==3.3.0
+demucs==4.0.1
+# CPU wheels (works on Debian slim); keep versions aligned if your env requires different:
+torch==2.3.1 --index-url https://download.pytorch.org/whl/cpu
+torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cpu
+# Demucs deps pull librosa/sox etc automatically; if build complains, you can pin:
+# librosa==0.10.2.post1
