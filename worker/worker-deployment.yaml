@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: worker
-        image: demucs-worker:latest
+        image: us-central1-docker.pkg.dev/lab7-477021/lab7/worker:v1
         imagePullPolicy: Never
         command: ["python3", "worker-server.py"]
         env:
