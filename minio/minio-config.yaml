@@ -1,34 +1,31 @@
-mode: standalone
-
-## Set default rootUser, rootPassword
-## AccessKey and secretKey is generated when not set
-## Distributed MinIO ref: https://min.io/docs/minio/linux/operations/install-deploy-manage/deploy-minio-multi-node-multi-drive.html
-##
-auth:
-    rootUser: "rootuser"
-    rootPassword: "rootpass123"
-
-# Number of drives attached to a node
-drivesPerNode: 1
-# Number of MinIO containers running
-replicas: 1
-# Number of expanded MinIO clusters
-pools: 1
-
-## Enable persistence using Persistent Volume Claims
-## ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
-##
-persistence:
-  enabled: false
-
-## Configure resource requests and limits
-## ref: http://kubernetes.io/docs/user-guide/compute-resources/
-##
-resources:
-  requests:
-    memory: 0.5Gi
-
-##
-buckets:
-  - name: demucs-bucket
-    policy: public
+# minio/init-buckets-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-init-buckets
+  namespace: lab7
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: mc
+        image: minio/mc:latest
+        env:
+        - name: MINIO_ROOT_USER
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: accesskey
+        - name: MINIO_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: secretkey
+        command: ["/bin/sh","-c"]
+        args:
+          - |
+            mc alias set local http://minio.lab7.svc.cluster.local:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" --api s3v4
+            mc mb -p local/queue || true
+            mc mb -p local/output || true
+            mc ls local
