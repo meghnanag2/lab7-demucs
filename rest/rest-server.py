@@ -27,9 +27,8 @@ OUTPUT_BUCKET = os.getenv("OUTPUT_BUCKET", "output")
 
 MAX_MP3_MB = int(os.getenv("MAX_MP3_MB", "20"))  # base64 payload guard
 
-# --- Clients ------------------------------------------------------------------
+# --- Clients -----------------------------------------------------------------
 r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
-
 minio_client = Minio(
     MINIO_ENDPOINT,
     access_key=MINIO_ACCESS_KEY,
@@ -83,4 +82,70 @@ def separate():
 
         # quick size guard (~4/3 overhead for base64)
         approx_mb = (len(mp3_b64) * 3) / (4 * 1024 * 1024)
-        i
+        if approx_mb > MAX_MP3_MB:
+            return jsonify({"error": f"MP3 too large (~{approx_mb:.1f} MiB), limit is {MAX_MP3_MB} MiB"}), 413
+
+        songhash = data.get("songhash") or os.urandom(16).hex()
+
+        # write temp mp3 and upload to MinIO queue bucket
+        with tempfile.TemporaryDirectory() as tmpd:
+            mp3_path = os.path.join(tmpd, f"{songhash}.mp3")
+            with open(mp3_path, "wb") as f:
+                f.write(base64.b64decode(mp3_b64))
+            minio_client.fput_object(QUEUE_BUCKET, f"{songhash}.mp3", mp3_path)
+            log.info(f"Queued object uploaded: {QUEUE_BUCKET}/{songhash}.mp3")
+
+        # push a job to Redis (worker only needs the hash)
+        job = {"songhash": songhash}
+        if data.get("callback"):
+            job["callback"] = data["callback"]
+
+        r.lpush(QUEUE_NAME, json.dumps(job))
+        log.info(f"Enqueued job to '{QUEUE_NAME}': {job}")
+
+        return jsonify({"hash": songhash, "reason": "Song enqueued for separation"}), 200
+
+    except Exception as e:
+        log.exception("Error in /apiv1/separate")
+        return jsonify({"error": str(e)}), 500
+
+@app.get("/apiv1/queue")
+def get_queue():
+    try:
+        # show most recent 50 jobs
+        items = [json.loads(x) for x in r.lrange(QUEUE_NAME, 0, 49)]
+        return jsonify({"queue": items}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.get("/apiv1/track/<songhash>/<track>")
+def get_track(songhash, track):
+    """
+    track in {vocals, drums, bass, other}
+    Worker uploads flat names: <songhash>-<track>.mp3 to OUTPUT_BUCKET
+    """
+    try:
+        object_name = f"{songhash}-{track}.mp3"
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmpf:
+            tmp_path = tmpf.name
+        minio_client.fget_object(OUTPUT_BUCKET, object_name, tmp_path)
+        return send_file(tmp_path, as_attachment=True, download_name=object_name)
+    except S3Error as e:
+        return jsonify({"error": f"MinIO: {e}"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.delete("/apiv1/remove/<songhash>/<track>")
+def remove_track(songhash, track):
+    try:
+        object_name = f"{songhash}-{track}.mp3"
+        minio_client.remove_object(OUTPUT_BUCKET, object_name)
+        return jsonify({"removed": object_name}), 200
+    except S3Error as e:
+        return jsonify({"error": f"MinIO: {e}"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+if __name__ == "__main__":
+    # Flask dev/run inside container
+    app.run(host="0.0.0.0", port=5000)
