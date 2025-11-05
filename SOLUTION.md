@@ -1,13 +1,13 @@
-# Lab7 Music Separation - Deployment Commands
+# Lab7 Music Separation - Solution File
 
-## What We Did
+## Purpose: 
 Built and deployed a music separation service on Google Cloud Kubernetes with REST API, DEMUCS worker, Redis queue, and MinIO storage.
 
 ---
 
-## Exact Commands We Ran (Line by Line)
+## Commands to Run:
 
-### Setup GCP Project
+### Project Setup 
 
 ```bash
 gcloud config set project lab7-477021
@@ -199,82 +199,10 @@ git commit -m "Add separated music tracks from DEMUCS processing"
 git push origin main --force
 ```
 
-### Check Pods Status
-
-```bash
-kubectl -n lab7 get pods
-```
-
 ### View All Running Services
 
 ```bash
 kubectl -n lab7 get all
-```
-
-### Describe a Pod
-
-```bash
-kubectl -n lab7 describe pod <pod-name>
-```
-
-### Watch Pods in Real-time
-
-```bash
-kubectl -n lab7 get pods -w
-```
-
-### Stream Worker Logs
-
-```bash
-kubectl -n lab7 logs deployment/worker -f
-```
-
-### Stream REST API Logs
-
-```bash
-kubectl -n lab7 logs deployment/rest -f
-```
-
-### Scale REST API to 3 Replicas
-
-```bash
-kubectl -n lab7 scale deployment rest --replicas=3
-```
-
-### Scale Worker to 3 Replicas
-
-```bash
-kubectl -n lab7 scale deployment worker --replicas=3
-```
-
-### Restart REST Deployment
-
-```bash
-kubectl -n lab7 rollout restart deployment/rest
-```
-
-### Restart Worker Deployment
-
-```bash
-kubectl -n lab7 rollout restart deployment/worker
-```
-
-### Delete REST Deployment
-
-```bash
-kubectl -n lab7 delete deployment rest
-```
-
-### Check Services
-
-```bash
-kubectl -n lab7 get svc
-```
-
-### Check Deployments
-
-```bash
-kubectl -n lab7 get deployments
 ```
 
 ---
@@ -303,91 +231,3 @@ curl http://localhost:8080/apiv1/track/YOUR_HASH_HERE/vocals -o vocals.mp3
 file vocals.mp3
 ```
 
----
-
-## Key Hashes from Our Testing
-
-```bash
-# Job 1 - short-hop.mp3
-Hash: bf9f10c7b08cef5c597e6d710080f90c
-Status: ✅ Processed successfully
-
-# Job 2 - short-dreams.mp3
-Hash: d19a547c07639fd730fb990e63d9b9aa
-Status: ✅ Processed successfully
-```
-
----
-
-## Common Issues & Fixes
-
-### Issue: Pod stuck in CrashLoopBackOff
-
-**Fix:**
-```bash
-kubectl -n lab7 delete deployment rest --force --grace-period=0
-
-docker build --no-cache -t us-central1-docker.pkg.dev/lab7-477021/lab7/rest:v1 -f rest/Dockerfile rest/
-
-docker push us-central1-docker.pkg.dev/lab7-477021/lab7/rest:v1
-
-kubectl patch deployment rest -p '{"spec":{"template":{"spec":{"containers":[{"name":"rest","imagePullPolicy":"Always"}]}}}' -n lab7
-
-kubectl rollout restart deployment/rest -n lab7
-```
-
-### Issue: Pod Terminating
-
-**Fix:**
-```bash
-kubectl -n lab7 delete pod <pod-name> --grace-period=0 --force
-```
-
-### Issue: Can't connect to service
-
-**Fix:**
-```bash
-kubectl -n lab7 port-forward svc/rest 8080:8080 &
-
-curl http://localhost:8080/healthz
-```
-
----
-
-## Status Commands
-
-```bash
-# Check everything
-kubectl -n lab7 get all
-
-# Check pod logs
-kubectl -n lab7 logs deployment/rest
-
-# Check worker logs
-kubectl -n lab7 logs deployment/worker
-
-# Watch real-time
-kubectl -n lab7 get pods -w
-```
-
----
-
-## Summary
-
-✅ **Docker Images Built & Pushed**
-- REST API: us-central1-docker.pkg.dev/lab7-477021/lab7/rest:v1
-- Worker: us-central1-docker.pkg.dev/lab7-477021/lab7/worker:v1
-
-✅ **Services Running**
-- REST API (port 8080)
-- Worker (processing DEMUCS)
-- Redis (job queue)
-- MinIO (file storage)
-
-✅ **System Tested**
-- Uploaded 2 short songs
-- Processed through DEMUCS
-- Downloaded 8 separated tracks
-- All stored in GitHub results/ folder
-
-✅ **Ready for Production**
