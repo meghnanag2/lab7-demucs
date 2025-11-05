@@ -15,9 +15,7 @@ spec:
     spec:
       containers:
       - name: rest
-        # IMPORTANT: Update <YOUR_AR_PREFIX>, <PROJECT>, and <REPO> to your values
-        # Example: us-central1-docker.pkg.dev/my-project-id/lab7/rest:v1
-        image: <YOUR_AR_PREFIX>/rest:v1
+        image: us-central1-docker.pkg.dev/lab7-477021/lab7/rest:v1
         imagePullPolicy: IfNotPresent
         ports:
           - containerPort: 5000
