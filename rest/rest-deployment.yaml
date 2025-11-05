@@ -1,40 +1,39 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: rest-server
+  name: rest
+  namespace: lab7
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: rest-server
+      app: rest          
   template:
     metadata:
       labels:
-        app: rest-server
+        app: rest     
     spec:
       containers:
-      - name: rest-server
+      - name: rest
         image: us-central1-docker.pkg.dev/lab7-477021/lab7/rest-server:v1
         imagePullPolicy: IfNotPresent
         ports:
-        - containerPort: 5000
+          - containerPort: 5000
         env:
-        - name: MINIO_HOST
-          value: "minio"
-        - name: MINIO_PORT
-          value: "9000"
-        - name: MINIO_ACCESS_KEY
-          valueFrom:
-            secretKeyRef:
-              name: minio-credentials
-              key: accesskey
-        - name: MINIO_SECRET_KEY
-          valueFrom:
-            secretKeyRef:
-              name: minio-credentials
-              key: secretkey
-       
-        - name: REDIS_HOST_NAME
-          value: "redis"
-        - name: REDIS_PORT_NUM
-          value: "6379"
+          # MinIO (matches your Python code)
+          - name: MINIO_ENDPOINT
+            value: "minio:9000"
+          - name: MINIO_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: minio-credentials
+                key: accesskey
+          - name: MINIO_SECRET_KEY
+            valueFrom:
+              secretKeyRef:
+                name: minio-credentials
+                key: secretkey
+          - name: REDIS_HOST
+            value: "redis"
+          - name: REDIS_PORT
+            value: "6379"
