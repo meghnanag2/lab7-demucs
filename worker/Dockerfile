@@ -11,11 +11,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Python deps
-COPY worker/requirements.txt .
+COPY worker/requirements.txt
 # Use CPU wheels for torch/torchaudio
 RUN pip install --no-cache-dir -r requirements.txt
 
 # App
-COPY worker/worker-server.py .
+COPY worker/worker-server.py
 
 CMD ["python", "worker-server.py"]
