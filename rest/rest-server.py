@@ -29,6 +29,7 @@ MAX_MP3_MB = int(os.getenv("MAX_MP3_MB", "20"))  # base64 payload guard
 
 # --- Clients -----------------------------------------------------------------
 r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+
 minio_client = Minio(
     MINIO_ENDPOINT,
     access_key=MINIO_ACCESS_KEY,
@@ -63,9 +64,9 @@ def healthz():
 def readyz():
     try:
         r.ping()
-        # trivial MinIO op: list objects in queue bucket (no fetch)
-        _ = minio_client.list_objects(QUEUE_BUCKET, max_keys=1)
-        return jsonify({"ready": True}), 200
+        # Try one trivial MinIO op: fetch at most one listing item
+        _one = next(minio_client.list_objects(QUEUE_BUCKET, recursive=False), None)
+        return jsonify({"ready": True, "minio_seen": bool(_one)}), 200
     except Exception as e:
         return jsonify({"ready": False, "error": str(e)}), 503
 
@@ -112,7 +113,6 @@ def separate():
 @app.get("/apiv1/queue")
 def get_queue():
     try:
-        # show most recent 50 jobs
         items = [json.loads(x) for x in r.lrange(QUEUE_NAME, 0, 49)]
         return jsonify({"queue": items}), 200
     except Exception as e:
