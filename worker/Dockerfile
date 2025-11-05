@@ -1,20 +1,16 @@
-# Demucs worker (CPU) + Redis + MinIO
 FROM python:3.12-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
-
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 
-# Demucs needs ffmpeg; use minimal base
+# Demucs needs ffmpeg
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Python deps (context is worker/)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# App
 COPY worker-server.py .
 
+# no port to expose; it’s a background worker
 CMD ["python", "worker-server.py"]
