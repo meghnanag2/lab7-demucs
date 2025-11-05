@@ -15,12 +15,24 @@ spec:
     spec:
       containers:
       - name: rest
-        image: us-central1-docker.pkg.dev/lab7-477021/lab7/rest-server:v1
+        # IMPORTANT: Update <YOUR_AR_PREFIX>, <PROJECT>, and <REPO> to your values
+        # Example: us-central1-docker.pkg.dev/my-project-id/lab7/rest:v1
+        image: <YOUR_AR_PREFIX>/rest:v1
         imagePullPolicy: IfNotPresent
         ports:
           - containerPort: 5000
+        
+        # Resource requests
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+          limits:
+            cpu: "2"
+            memory: "2Gi"
+        
         env:
-          # MinIO (matches your Python code)
+          # MinIO connection
           - name: MINIO_ENDPOINT
             value: "minio:9000"
           - name: MINIO_ACCESS_KEY
@@ -33,7 +45,29 @@ spec:
               secretKeyRef:
                 name: minio-credentials
                 key: secretkey
+          - name: MINIO_SECURE
+            value: "false"
+          
+          # MinIO bucket names
+          - name: QUEUE_BUCKET
+            value: "queue"
+          - name: OUTPUT_BUCKET
+            value: "output"
+          
+          # Redis connection
           - name: REDIS_HOST
             value: "redis"
           - name: REDIS_PORT
             value: "6379"
+          
+          # Queue name for worker tasks
+          - name: QUEUE_NAME
+            value: "toWorker"
+          
+          # Max MP3 size (in MB)
+          - name: MAX_MP3_MB
+            value: "20"
+          
+          # Optional: Log level
+          - name: LOG_LEVEL
+            value: "INFO"
