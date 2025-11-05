@@ -6,8 +6,8 @@ metadata:
 spec:
   selector:
     app: rest
+  type: ClusterIP
   ports:
     - name: http
-      port: 5000
-      targetPort: 5000
-  type: ClusterIP
+      port: 8080        # external service port
+      targetPort: 5000  # MUST MATCH the app.run port
