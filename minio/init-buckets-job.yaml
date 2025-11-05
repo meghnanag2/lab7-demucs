@@ -1,8 +1,35 @@
-apiVersion: v1
-kind: Service
+apiVersion: batch/v1
+kind: Job
 metadata:
-  name: minio
-  namespace: default
+  name: minio-init-buckets
+  namespace: lab7
 spec:
-  type: ExternalName
-  externalName: minio-proj.minio-ns.svc.cluster.local
+  backoffLimit: 1
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mc
+          image: minio/mc:latest
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: accesskey
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secretkey
+          command: ["/bin/sh","-c"]
+          args:
+            - |
+              set -e
+              # point to the in-cluster MinIO service in lab7
+              mc alias set local http://minio.lab7.svc.cluster.local:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" --api s3v4
+              # create buckets if not present (names used by your code)
+              mc mb local/queue  || true
+              mc mb local/output || true
+              # show what we made
+              mc ls local
