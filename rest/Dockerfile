@@ -1,33 +1,29 @@
 # ============================================================================
-# REST API Service Dockerfile for Lab7 Music Separation
+# Worker Service Dockerfile for Lab7 Music Separation
 # ============================================================================
 
-FROM python:3.11-slim
+FROM xserrat/facebook-demucs:latest
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Create necessary directories for DEMUCS processing
+RUN mkdir -p /app/demucs/input /app/demucs/output /app/demucs/models && \
+    chmod -R 777 /app/demucs
 
 # Copy Python requirements
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+# Install additional Python dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy REST server code
-COPY rest-server.py .
-
-# Expose the port Flask runs on
-EXPOSE 5000
+# Copy worker server code
+COPY worker-server.py .
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:5000/healthz || exit 1
+  CMD python3 -c "import redis; r = redis.Redis(host='redis', port=6379); r.ping()" || exit 1
 
-# Run the Flask application
-CMD ["python3", "rest-server.py"]
+# Set the command to run when container starts
+CMD ["python3", "worker-server.py"]
