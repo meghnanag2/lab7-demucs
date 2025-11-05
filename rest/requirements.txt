@@ -1,6 +1,7 @@
+FastAPI==0.115.0
 uvicorn==0.30.6
-Flask
 redis==5.0.7
 minio==7.2.7
 jsonpickle==3.3.0
 requests
+python-multipart
