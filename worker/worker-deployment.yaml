@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: worker
+  namespace: lab7
 spec:
   replicas: 1
   selector:
@@ -14,10 +15,23 @@ spec:
     spec:
       containers:
       - name: worker
-        image: us-central1-docker.pkg.dev/lab7-477021/lab7/worker:v1
-        imagePullPolicy: Never
+        # IMPORTANT: Update <YOUR_AR_PREFIX>, <PROJECT>, and <REPO> to your values
+        # Example: us-central1-docker.pkg.dev/my-project-id/lab7/worker:v1
+        image: <YOUR_AR_PREFIX>/worker:v1
+        imagePullPolicy: IfNotPresent
         command: ["python3", "worker-server.py"]
+        
+        # Resource requests for DEMUCS (requires significant memory)
+        resources:
+          requests:
+            cpu: "2"
+            memory: "8Gi"
+          limits:
+            cpu: "4"
+            memory: "12Gi"
+        
         env:
+        # MinIO connection
         - name: MINIO_ENDPOINT
           value: "minio:9000"
         - name: MINIO_ACCESS_KEY
@@ -30,11 +44,25 @@ spec:
             secretKeyRef:
               name: minio-credentials
               key: secretkey
-       
+        - name: MINIO_SECURE
+          value: "false"
+        
+        # MinIO bucket names
+        - name: QUEUE_BUCKET
+          value: "queue"
+        - name: OUTPUT_BUCKET
+          value: "output"
+        
+        # Redis connection
         - name: REDIS_HOST
           value: "redis"
         - name: REDIS_PORT
           value: "6379"
+        
+        # DEMUCS working directory
         - name: DEMUS_WORKDIR
           value: "/app/demucs"
         
+        # Optional: Log level
+        - name: LOG_LEVEL
+          value: "INFO"
