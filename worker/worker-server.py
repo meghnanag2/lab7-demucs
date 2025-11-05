@@ -18,10 +18,7 @@ logging.basicConfig(
 
 log = logging.getLogger("worker")
 
-# --------------------------
 # Environment variables
-# --------------------------
-
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
@@ -37,18 +34,12 @@ INPUT_DIR = os.path.join(DEMUCS_BASE, "input")
 OUTPUT_DIR = os.path.join(DEMUCS_BASE, "output")
 MODELS_DIR = os.path.join(DEMUCS_BASE, "models")
 
-# --------------------------
 # Ensure directories exist
-# --------------------------
-
 os.makedirs(INPUT_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(MODELS_DIR, exist_ok=True)
 
-# --------------------------
 # Connect to Redis
-# --------------------------
-
 r = None
 while not r:
     try:
@@ -60,10 +51,7 @@ while not r:
         r = None
         time.sleep(3)
 
-# --------------------------
 # Connect to MinIO
-# --------------------------
-
 minio_client = None
 while not minio_client:
     try:
@@ -73,7 +61,6 @@ while not minio_client:
             secret_key=MINIO_SECRET_KEY,
             secure=MINIO_SECURE
         )
-        # Test connection by listing buckets
         minio_client.list_buckets()
         log.info(f"Connected to MinIO at {MINIO_ENDPOINT}")
     except Exception as e:
@@ -89,10 +76,6 @@ for bucket in [QUEUE_BUCKET, OUTPUT_BUCKET]:
             minio_client.make_bucket(bucket)
     except Exception as e:
         log.error(f"Bucket check/create failed for {bucket}: {e}")
-
-# --------------------------
-# Helper functions
-# --------------------------
 
 def download_from_minio(songhash):
     """Download MP3 file from MinIO to local input directory."""
@@ -111,7 +94,6 @@ def run_demucs(songhash, mp3_filename):
     """Run Demucs separation using Python module."""
     input_path = os.path.join(INPUT_DIR, mp3_filename)
     
-    # DEMUCS command with --mp3 flag to output MP3 format
     demucs_cmd = [
         "python3", "-m", "demucs.separate",
         "-o", OUTPUT_DIR,
@@ -135,15 +117,14 @@ def run_demucs(songhash, mp3_filename):
 def upload_results_to_minio(songhash):
     """
     Upload separated tracks back to MinIO output bucket.
-    DEMUCS outputs to: OUTPUT_DIR/mdx_extra_q/{songhash}/{bass,drums,vocals,other}.mp3
+    DEMUCS outputs to: OUTPUT_DIR/htdemucs/{songhash}/{bass,drums,vocals,other}.mp3
     We upload as: {songhash}-{track}.mp3 (flat naming to match REST API)
     """
-    # DEMUCS uses mdx_extra_q model by default
-    result_dir = os.path.join(OUTPUT_DIR, "mdx_extra_q", songhash)
+    # DEMUCS uses htdemucs directory (not mdx_extra_q)
+    result_dir = os.path.join(OUTPUT_DIR, "htdemucs", songhash)
     
     if not os.path.exists(result_dir):
         log.error(f"No output directory found for {songhash}: {result_dir}")
-        log.error(f"Expected one of: mdx_extra_q, htdemucs, tasnet, tasnet_extra, or your model")
         return False
 
     uploaded = False
@@ -163,18 +144,7 @@ def upload_results_to_minio(songhash):
     
     return uploaded
 
-def log_to_redis(message, level="INFO"):
-    """Send log message to Redis logging queue"""
-    try:
-        log_entry = f"{level}: {message}"
-        r.lpush("logging", log_entry)
-    except Exception as e:
-        log.warning(f"Failed to log to Redis: {e}")
-
-# --------------------------
 # Main Worker Loop
-# --------------------------
-
 if __name__ == "__main__":
     log.info("=" * 60)
     log.info("Worker started. Listening for Redis jobs on 'toWorker'...")
@@ -187,38 +157,28 @@ if __name__ == "__main__":
     
     while True:
         try:
-            # Block until a job arrives
             _, msg = r.blpop("toWorker", timeout=0)
             job = json.loads(msg)
             songhash = job.get("songhash")
             
             log.info("=" * 60)
             log.info(f"Job received: {job}")
-            log_to_redis(f"Processing job {songhash}")
 
-            # Download MP3 from MinIO
             mp3_filename = download_from_minio(songhash)
             if not mp3_filename:
                 log.error(f"Failed to download MP3 for {songhash}")
-                log_to_redis(f"Failed: Could not download {songhash}", "ERROR")
                 continue
 
-            # Run DEMUCS separation
             if run_demucs(songhash, mp3_filename):
-                # Upload results back to MinIO
                 if upload_results_to_minio(songhash):
                     log.info(f"✓ Job {songhash} completed successfully")
-                    log_to_redis(f"Completed job {songhash}")
                 else:
                     log.error(f"✗ Failed to upload results for {songhash}")
-                    log_to_redis(f"Failed: Could not upload results for {songhash}", "ERROR")
             else:
                 log.error(f"✗ Job {songhash} failed during Demucs run")
-                log_to_redis(f"Failed: Demucs error for {songhash}", "ERROR")
 
             log.info("=" * 60)
 
         except Exception as e:
             log.exception(f"Unexpected error in worker loop: {e}")
-            log_to_redis(f"Worker error: {str(e)}", "ERROR")
             time.sleep(3)
