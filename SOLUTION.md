@@ -1,21 +1,39 @@
-# Lab7 Music Separation - Solution File
+# Lab7 Music Separation
 
-## Purpose: 
+## Purpose
 Built and deployed a music separation service on Google Cloud Kubernetes with REST API, DEMUCS worker, Redis queue, and MinIO storage.
 
 ---
 
-## Commands to Run:
+## System Architecture
+![Kubernetes Pods Running](./images/13-system-architecture-diagram.png)
 
-### Project Setup 
+The system consists of 4 main components running on a GKE cluster:
+
+- **REST API (FastAPI)**: Receives upload requests, queues jobs to Redis, serves downloads from MinIO
+- **Worker (DEMUCS)**: Processes jobs from Redis queue, runs audio separation, uploads results to MinIO
+- **Redis**: Job queue for coordination between REST API and Worker
+- **MinIO**: Object storage for input MP3 files (queue bucket) and separated tracks (output bucket)
+
+**Data Flow:**
+1. User uploads MP3 → REST API stores in MinIO (queue bucket) → Job queued to Redis
+2. Worker polls Redis → Downloads MP3 → Runs DEMUCS → Uploads results to MinIO (output bucket)
+3. User downloads separated tracks → REST API fetches from MinIO → MP3 files delivered
+   
+---
+## Commands & Outputs: 
+
+### Setup GCP Project
 
 ```bash
-gcloud config set project lab7-477021
 gcloud services enable artifactregistry.googleapis.com
 gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 ```
 
-### Build REST API Docker Image
+---
+## Build and Push Docker Images
+
+### Build REST API Image
 
 ```bash
 docker build -t us-central1-docker.pkg.dev/lab7-477021/lab7/rest:v1 \
@@ -28,7 +46,7 @@ docker build -t us-central1-docker.pkg.dev/lab7-477021/lab7/rest:v1 \
 docker push us-central1-docker.pkg.dev/lab7-477021/lab7/rest:v1
 ```
 
-### Build Worker Docker Image
+### Build Worker Image
 
 ```bash
 docker build -t us-central1-docker.pkg.dev/lab7-477021/lab7/worker:v1 \
@@ -41,65 +59,61 @@ docker build -t us-central1-docker.pkg.dev/lab7-477021/lab7/worker:v1 \
 docker push us-central1-docker.pkg.dev/lab7-477021/lab7/worker:v1
 ```
 
-### Rebuild REST with No Cache
+---
+
+## Deploy Services to Kubernetes
+
+### Create Redis Service
 
 ```bash
-docker build --no-cache -t us-central1-docker.pkg.dev/lab7-477021/lab7/rest:v1 \
-  -f rest/Dockerfile rest/
+kubectl apply -f redis/redis-deployment.yaml
+kubectl apply -f redis/redis-service.yaml
 
-docker push us-central1-docker.pkg.dev/lab7-477021/lab7/rest:v1
+kubectl -n lab7 wait --for=condition=ready pod -l app=redis --timeout=60s
 ```
 
-### Force Kubectl to Pull Latest Image
+### Create MinIO Service
 
 ```bash
-kubectl patch deployment rest -p '{"spec":{"template":{"spec":{"containers":[{"name":"rest","imagePullPolicy":"Always"}]}}}}' -n lab7
+kubectl apply -f minio/minio-secret.yaml
+kubectl apply -f minio/minio-deployment.yaml
+kubectl apply -f minio/minio-service.yaml
 
-kubectl rollout restart deployment/rest -n lab7
+kubectl -n lab7 wait --for=condition=ready pod -l app=minio --timeout=120s
 ```
 
-### Delete and Recreate REST Deployment
+### Create REST API Service
 
 ```bash
-kubectl -n lab7 delete deployment rest --force --grace-period=0
-
-sleep 3
-
 kubectl apply -f rest/rest-deployment.yaml
+kubectl apply -f rest/rest-service.yaml
 
-sleep 10
+kubectl -n lab7 wait --for=condition=ready pod -l app=rest --timeout=120s
+```
 
+### Create Worker Service
+
+```bash
+kubectl apply -f worker/worker-deployment.yaml
+
+kubectl -n lab7 wait --for=condition=ready pod -l app=worker --timeout=120s
+```
+
+### Verify All Services Running
+
+![Kubernetes Pods Running](./images/14-pods-runnig.png)
+
+```bash
 kubectl -n lab7 get pods
 ```
 
-### Delete Old REST Pods
-
-```bash
-kubectl -n lab7 delete pods --all -n lab7
-```
-
-### Check Logs
-
-```bash
-kubectl -n lab7 logs rest-844d55565f-wltx6
-```
-
-### Rebuild Worker with No Cache
-
-```bash
-docker build --no-cache -t us-central1-docker.pkg.dev/lab7-477021/lab7/worker:v1 \
-  -f worker/Dockerfile worker/
-
-docker push us-central1-docker.pkg.dev/lab7-477021/lab7/worker:v1
-
-kubectl rollout restart deployment/worker -n lab7
-
-sleep 10
-
-kubectl -n lab7 get pods
-```
+---
 
 ### Port Forward REST API
+
+![GCP Project Setup](./images/01-gcp-project-setup.png)
+
+![Forwarding Active](./images/03-forwarding-active.png)
 
 ```bash
 kubectl -n lab7 port-forward svc/rest 8080:8080 &
@@ -107,23 +121,27 @@ kubectl -n lab7 port-forward svc/rest 8080:8080 &
 
 ### Test REST API Health
 
+![Rest API Health Check](./images/03-forwarding-active.png)
+
 ```bash
 curl http://localhost:8080/
 ```
 
-### Port Forward MinIO
+### Port Forward MinIO & Test MinIO
+
+![MinIO Health Check](./images/04-rest-api-health-check.png)
 
 ```bash
 kubectl -n lab7 port-forward svc/minio 9001:9001 &
 ```
-
-### Test MinIO
 
 ```bash
 curl http://localhost:9001/
 ```
 
 ### Run Sample Test Script
+
+![Python Sample Request](./images/05-python-sample-request.png)
 
 ```bash
 export REST=localhost:8080
@@ -133,17 +151,15 @@ python3 short-sample-request.py
 
 ### Check Worker Logs
 
+![Worker Logs Initial Error](./images/07-worker-logs-successful.png)
+
 ```bash
 kubectl -n lab7 logs deployment/worker --tail=50
 ```
 
-### Check Worker Output Directory
+### Check Worker's List Files in Output Directory
 
-```bash
-kubectl -n lab7 exec -it deployment/worker -- ls -la /app/demucs/output/
-```
-
-### List Files in Output Directory
+![DEMUCS Output Directory Structure](./images/08-htdemucs-directory.png)
 
 ```bash
 kubectl -n lab7 exec -it deployment/worker -- ls -la /app/demucs/output/htdemucs/
@@ -151,23 +167,15 @@ kubectl -n lab7 exec -it deployment/worker -- ls -la /app/demucs/output/htdemucs
 
 ### List Files in Specific Song Directory
 
+![Separated MP3 Files](./images/09-separated-mp3-files.png)
+
 ```bash
 kubectl -n lab7 exec -it deployment/worker -- ls -la /app/demucs/output/htdemucs/6350dc4958b5ea2f815a724cae09f152/
 ```
 
-### Download Separated Tracks
+### Download Separated Tracks & Verify Downloaded Files
 
-```bash
-curl http://localhost:8080/apiv1/track/bf9f10c7b08cef5c597e6d710080f90c/vocals -o vocals.mp3
-
-curl http://localhost:8080/apiv1/track/bf9f10c7b08cef5c597e6d710080f90c/bass -o bass.mp3
-
-curl http://localhost:8080/apiv1/track/bf9f10c7b08cef5c597e6d710080f90c/drums -o drums.mp3
-
-curl http://localhost:8080/apiv1/track/bf9f10c7b08cef5c597e6d710080f90c/other -o other.mp3
-```
-
-### Verify Downloaded Files
+![Download Tracks via curl](./images/12-github-results-folder.png)
 
 ```bash
 ls -lh *.mp3
@@ -198,36 +206,3 @@ git commit -m "Add separated music tracks from DEMUCS processing"
 
 git push origin main --force
 ```
-
-### View All Running Services
-
-```bash
-kubectl -n lab7 get all
-```
-
----
-
-## Testing Flow (Complete)
-
-```bash
-# 1. Port forward
-kubectl -n lab7 port-forward svc/rest 8080:8080 &
-
-# 2. Export environment
-export REST=localhost:8080
-
-# 3. Run test
-python3 short-sample-request.py
-
-# 4. Wait 15-20 minutes for processing
-
-# 5. Check logs
-kubectl -n lab7 logs deployment/worker --tail=50
-
-# 6. Download vocals (replace hash with actual hash from test output)
-curl http://localhost:8080/apiv1/track/YOUR_HASH_HERE/vocals -o vocals.mp3
-
-# 7. Verify file
-file vocals.mp3
-```
-
